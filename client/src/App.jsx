@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import GitSimulator from './GitSimulator.jsx';
 import * as d3 from 'd3';
 
 const API = import.meta.env.VITE_API_BASE || '';
@@ -24,7 +25,6 @@ const apiFetch=async(p,tk)=>{
 };
 const getSha=p=>typeof p==='string'?p:p?.sha||'';
 
-/* ── Animated Background ── */
 function AnimBg(){
   const ref=useRef(null);
   useEffect(()=>{
@@ -51,9 +51,6 @@ function AnimBg(){
   return <canvas ref={ref} style={{position:'fixed',top:0,left:0,width:'100%',height:'100%',zIndex:0,pointerEvents:'none'}}/>;
 }
 
-/* ══════════════════════════════════════════════
-   COMMIT GRAPH — Full pan/drag + zoom
-   ══════════════════════════════════════════════ */
 function CommitGraph({commits,branchColors,selectedSha,onSelect,compareMode,compareA,compareB,onCompareSelect}){
   const svgRef=useRef(null),wrapRef=useRef(null),zoomRef=useRef(null);
   const [dims,setDims]=useState({w:900,h:600});
@@ -74,26 +71,17 @@ function CommitGraph({commits,branchColors,selectedSha,onSelect,compareMode,comp
     if(!commits.length||!svgRef.current)return;
     const svg=d3.select(svgRef.current);
     svg.selectAll('*').remove();
-
     const ROW=65,COL=110,PT=60,PL=80;
     const branchNames=[...new Set(commits.map(c=>c.branch))];
     const bCol={};branchNames.forEach((b,i)=>{bCol[b]=i;});
     const msgStartX=PL+branchNames.length*COL+30;
-
-    // Compute positions
     const pos=new Map();
     commits.forEach((c,i)=>{pos.set(c.sha,{x:PL+bCol[c.branch]*COL,y:PT+i*ROW});});
-
-    // Defs
     const defs=svg.append('defs');
     const gl=defs.append('filter').attr('id','gl').attr('x','-80%').attr('y','-80%').attr('width','260%').attr('height','260%');
     gl.append('feGaussianBlur').attr('stdDeviation','5').attr('result','b');
     gl.append('feMerge').selectAll('feMergeNode').data(['b','SourceGraphic']).enter().append('feMergeNode').attr('in',d=>d);
-
-    // Root group — this is what gets transformed by zoom/pan
     const root=svg.append('g').attr('class','graph-root');
-
-    // Branch lanes
     branchNames.forEach((b,i)=>{
       const x=PL+i*COL,col=branchColors[b]||T.accent;
       root.append('line').attr('x1',x).attr('x2',x).attr('y1',0).attr('y2',PT+commits.length*ROW+100)
@@ -102,8 +90,6 @@ function CommitGraph({commits,branchColors,selectedSha,onSelect,compareMode,comp
         .attr('fill',col).attr('font-size',10).attr('font-weight',700).attr('font-family','system-ui')
         .attr('opacity',.55).text(b.length>15?b.slice(0,13)+'..':b);
     });
-
-    // Edges
     commits.forEach(c=>{
       const p=pos.get(c.sha);if(!p)return;
       const col=branchColors[c.branch]||T.accent;
@@ -120,8 +106,6 @@ function CommitGraph({commits,branchColors,selectedSha,onSelect,compareMode,comp
         }
       });
     });
-
-    // Nodes
     commits.forEach(c=>{
       const p=pos.get(c.sha);if(!p)return;
       const col=branchColors[c.branch]||T.accent;
@@ -131,40 +115,26 @@ function CommitGraph({commits,branchColors,selectedSha,onSelect,compareMode,comp
       const r=isMerge?8:6;
       const aName=c.author?.name||c.author||'Unknown';
       const date=c.date||c.author?.date;
-
       const n=root.append('g').attr('transform',`translate(${p.x},${p.y})`).style('cursor','pointer');
-
-      // Glow for selected/compare
       if(sel||cA||cB){
         const gc=cA?T.cyan:cB?T.orange:col;
         n.append('circle').attr('r',r+16).attr('fill',gc).attr('opacity',.07);
         n.append('circle').attr('r',r+10).attr('fill','none').attr('stroke',gc)
           .attr('stroke-width',1.5).attr('opacity',.25).attr('filter','url(#gl)');
       }
-
-      // Hover ring
       const hr=n.append('circle').attr('r',r+12).attr('fill',col).attr('opacity',0);
-      // Circles
       const outer=n.append('circle').attr('r',r+2).attr('fill',sel?col:T.bg).attr('stroke',col).attr('stroke-width',sel?3:2);
       const inner=n.append('circle').attr('r',r).attr('fill',col).attr('opacity',sel?1:.85);
       if(isMerge)n.append('circle').attr('r',3).attr('fill',T.bg);
-
-      // Compare labels
       if(cA)n.append('text').attr('x',r+5).attr('y',-10).attr('fill',T.cyan).attr('font-size',9).attr('font-weight',800).text('A');
       if(cB)n.append('text').attr('x',r+5).attr('y',-10).attr('fill',T.orange).attr('font-size',9).attr('font-weight',800).text('B');
-
-      // Message
       n.append('text').attr('x',msgStartX-p.x).attr('y',-3)
         .attr('fill',sel?T.text:T.textMuted).attr('font-size',12).attr('font-family','system-ui')
         .attr('font-weight',sel?600:400)
         .text((c.message||'').substring(0,60)+((c.message||'').length>60?'...':''));
-
-      // Meta line
       n.append('text').attr('x',msgStartX-p.x).attr('y',13)
         .attr('fill',T.textDim).attr('font-size',10).attr('font-family','system-ui')
         .text(`${shortSha(c.sha)}  ·  ${aName}  ·  ${timeAgo(date)}`);
-
-      // Tooltip
       const tt=n.append('g').attr('opacity',0);
       tt.append('rect').attr('x',-130).attr('y',-52).attr('rx',8).attr('width',260).attr('height',42)
         .attr('fill',T.card).attr('stroke',col+'55').attr('stroke-width',1);
@@ -174,7 +144,6 @@ function CommitGraph({commits,branchColors,selectedSha,onSelect,compareMode,comp
         .attr('font-family','system-ui').text(aName.substring(0,22));
       tt.append('text').attr('x',-120).attr('y',-19).attr('fill',T.textMuted).attr('font-size',9.5)
         .attr('font-family','system-ui').text((c.message||'').substring(0,40));
-
       n.on('mouseenter',function(){
         hr.transition().duration(150).attr('opacity',.1);
         outer.transition().duration(150).attr('stroke-width',3.5);
@@ -190,29 +159,20 @@ function CommitGraph({commits,branchColors,selectedSha,onSelect,compareMode,comp
       });
       n.on('click',()=>{if(compareMode)onCompareSelect(c.sha);else onSelect(c);});
     });
-
-    // ZOOM + PAN — key fix: extent covers full content so you can drag everywhere
-    const zoomBehavior=d3.zoom()
-      .scaleExtent([0.1,6])
+    const zoomBehavior=d3.zoom().scaleExtent([0.1,6])
       .on('zoom',e=>{root.attr('transform',e.transform);setZoomLevel(e.transform.k);});
-
-    svg.call(zoomBehavior).on('dblclick.zoom', null);
-
-    svg.style('cursor', 'grab')
-      .on('mousedown', function() { d3.select(this).style('cursor', 'grabbing'); })
-      .on('mouseup mouseleave', function() { d3.select(this).style('cursor', 'grab'); });
-
-    zoomRef.current = zoomBehavior;
-
-    const initScale = Math.min(dims.w / (msgStartX + 400), dims.h / (PT + commits.length * ROW + 100), 1);
-    svg.call(zoomBehavior.transform, d3.zoomIdentity.translate(10, 10).scale(Math.max(initScale, 0.3)));
-
+    svg.call(zoomBehavior).on('dblclick.zoom',null);
+    svg.style('cursor','grab')
+      .on('mousedown',function(){d3.select(this).style('cursor','grabbing');})
+      .on('mouseup mouseleave',function(){d3.select(this).style('cursor','grab');});
+    zoomRef.current=zoomBehavior;
+    const initScale=Math.min(dims.w/(msgStartX+400),dims.h/(PT+commits.length*ROW+100),1);
+    svg.call(zoomBehavior.transform,d3.zoomIdentity.translate(10,10).scale(Math.max(initScale,0.3)));
   },[commits,dims,selectedSha,compareMode,compareA,compareB,branchColors,onSelect,onCompareSelect]);
 
   return(
     <div ref={wrapRef} style={{width:'100%',height:'100%',position:'relative',overflow:'hidden'}}>
       <svg ref={svgRef} width="100%" height="100%" style={{background:'transparent',display:'block'}}/>
-      {/* Zoom controls */}
       <div style={{position:'absolute',bottom:14,right:14,display:'flex',flexDirection:'column',gap:3,
         background:T.card+'ee',border:`1px solid ${T.border}`,borderRadius:10,padding:4,
         backdropFilter:'blur(8px)',boxShadow:'0 4px 20px rgba(0,0,0,0.5)'}}>
@@ -231,7 +191,6 @@ function CommitGraph({commits,branchColors,selectedSha,onSelect,compareMode,comp
   );
 }
 
-/* ── Commit List ── */
 function CommitList({commits,selectedSha,onSelect,branchColors,compareMode,compareA,compareB,onCompareSelect}){
   return(
     <div style={{overflowY:'auto',height:'100%'}}>
@@ -267,7 +226,6 @@ function CommitList({commits,selectedSha,onSelect,branchColors,compareMode,compa
   );
 }
 
-/* ── File Diff Renderer (reused by both panels) ── */
 function FileDiffs({files,stats}){
   const[exp,setExp]=useState(new Set());
   const toggle=fn=>setExp(p=>{const s=new Set(p);s.has(fn)?s.delete(fn):s.add(fn);return s;});
@@ -313,7 +271,6 @@ function FileDiffs({files,stats}){
   );
 }
 
-/* ── Commit Detail Panel ── */
 function CommitPanel({commit,owner,repo,token,onClose}){
   const[detail,setDetail]=useState(null);
   const[loading,setLoading]=useState(false);
@@ -348,7 +305,6 @@ function CommitPanel({commit,owner,repo,token,onClose}){
   );
 }
 
-/* ── Compare Panel ── */
 function ComparePanel({owner,repo,token,shaA,shaB,onClose}){
   const[data,setData]=useState(null);
   const[loading,setLoading]=useState(false);
@@ -370,7 +326,7 @@ function ComparePanel({owner,repo,token,shaA,shaB,onClose}){
       <div style={{overflowY:'auto',flex:1,padding:'16px 20px'}}>
         {loading?(
           <div style={{textAlign:'center',padding:30,color:T.textMuted,fontSize:13}}>
-            <div style={{width:28,height:28,border:`2px solid ${T.border}`,borderTop:`2px solid ${T.cyan}`,borderRadius:'50%',animation:'sp .7s linear infinite',margin:'0 auto 10px'}}/>Comparing commits...<style>{`@keyframes sp{to{transform:rotate(360deg)}}`}</style>
+            <div style={{width:28,height:28,border:`2px solid ${T.border}`,borderTop:`2px solid ${T.cyan}`,borderRadius:'50%',animation:'sp .7s linear infinite',margin:'0 auto 10px'}}/>Comparing...<style>{`@keyframes sp{to{transform:rotate(360deg)}}`}</style>
           </div>
         ):error?(
           <div style={{color:T.red,padding:20,textAlign:'center',fontSize:13}}>{error}</div>
@@ -403,9 +359,6 @@ function ComparePanel({owner,repo,token,shaA,shaB,onClose}){
   );
 }
 
-/* ══════════════════════════════════════════════
-   MAIN APP
-   ══════════════════════════════════════════════ */
 export default function App(){
   const[url,setUrl]=useState('');
   const[token,setToken]=useState('');
@@ -421,6 +374,7 @@ export default function App(){
   const[branchFilter,setBranchFilter]=useState('all');
   const[view,setView]=useState('graph');
   const[searchTerm,setSearchTerm]=useState('');
+  const[appMode,setAppMode]=useState('explore');
   const[compareMode,setCompareMode]=useState(false);
   const[compareA,setCompareA]=useState(null);
   const[compareB,setCompareB]=useState(null);
@@ -468,24 +422,34 @@ export default function App(){
   return(
     <div style={{background:T.bg,color:T.text,height:'100vh',fontFamily:"-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",display:'flex',flexDirection:'column',position:'relative'}}>
       <AnimBg/>
-      {/* Header */}
       <header style={{padding:isMobile?'10px 12px':'10px 24px',borderBottom:`1px solid ${T.border}`,display:'flex',alignItems:'center',gap:isMobile?8:16,background:T.surface+'ee',flexShrink:0,zIndex:10,backdropFilter:'blur(12px)',flexWrap:isMobile?'wrap':'nowrap'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,flexShrink:0}}>
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={T.accent} strokeWidth="2" strokeLinecap="round"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="19" r="2"/><circle cx="19" cy="12" r="2"/><line x1="12" y1="7" x2="12" y2="17"/><path d="M14 5h2a2 2 0 0 1 2 2v3"/></svg>
           <span style={{fontWeight:800,fontSize:isMobile?14:16}}>Visual<span style={{color:T.accent}}>Git</span></span>
         </div>
-        <div style={{flex:1,display:'flex',gap:8,minWidth:0}}>
-          <div style={{flex:1,display:'flex',alignItems:'center',gap:6,background:T.bg+'cc',border:`1px solid ${T.border}`,borderRadius:8,padding:'0 10px'}}>
-            <span style={{color:T.textDim,fontSize:13}}>🔍</span>
-            <input value={url} onChange={e=>setUrl(e.target.value)} onKeyDown={e=>e.key==='Enter'&&fetchRepo()} placeholder="github.com/owner/repo"
-              style={{flex:1,background:'none',border:'none',color:T.text,fontSize:13,outline:'none',padding:'8px 0',minWidth:0}}/>
-          </div>
-          <button onClick={()=>setShowToken(!showToken)} style={{background:token?T.green+'18':T.bg,border:`1px solid ${token?T.green+'44':T.border}`,borderRadius:8,padding:'0 10px',cursor:'pointer',color:token?T.green:T.textMuted,fontSize:14}}>🔑</button>
-          <button onClick={fetchRepo} disabled={loading||!url} style={{background:`linear-gradient(135deg,${T.accent},${T.purple})`,color:'#fff',border:'none',borderRadius:8,padding:isMobile?'8px 14px':'8px 22px',fontWeight:600,cursor:loading?'wait':'pointer',fontSize:13,opacity:loading||!url?.5:1}}>
-            {loading?'...':'Explore'}</button>
+        <div style={{display:'flex',gap:2,background:T.bg+'cc',borderRadius:8,padding:2,border:`1px solid ${T.border}`,marginRight:8}}>
+          {[{k:'explore',l:'🔍 Explore'},{k:'lab',l:'🧪 Git Lab'}].map(m=>(
+            <button key={m.k} onClick={()=>setAppMode(m.k)} style={{background:appMode===m.k?T.accent+'1a':'transparent',color:appMode===m.k?T.accent:T.textMuted,border:'none',borderRadius:6,padding:'4px 12px',cursor:'pointer',fontSize:12,fontWeight:appMode===m.k?600:400}}>{m.l}</button>
+          ))}
         </div>
+        {appMode==='explore'&&(
+          <div style={{flex:1,display:'flex',gap:8,minWidth:0}}>
+            <div style={{flex:1,display:'flex',alignItems:'center',gap:6,background:T.bg+'cc',border:`1px solid ${T.border}`,borderRadius:8,padding:'0 10px'}}>
+              <span style={{color:T.textDim,fontSize:13}}>🔍</span>
+              <input value={url} onChange={e=>setUrl(e.target.value)} onKeyDown={e=>e.key==='Enter'&&fetchRepo()} placeholder="github.com/owner/repo"
+                style={{flex:1,background:'none',border:'none',color:T.text,fontSize:13,outline:'none',padding:'8px 0',minWidth:0}}/>
+            </div>
+            <button onClick={()=>setShowToken(!showToken)} style={{background:token?T.green+'18':T.bg,border:`1px solid ${token?T.green+'44':T.border}`,borderRadius:8,padding:'0 10px',cursor:'pointer',color:token?T.green:T.textMuted,fontSize:14}}>🔑</button>
+            <button onClick={fetchRepo} disabled={loading||!url} style={{background:`linear-gradient(135deg,${T.accent},${T.purple})`,color:'#fff',border:'none',borderRadius:8,padding:isMobile?'8px 14px':'8px 22px',fontWeight:600,cursor:loading?'wait':'pointer',fontSize:13,opacity:loading||!url?0.5:1}}>
+              {loading?'...':'Explore'}</button>
+          </div>
+        )}
       </header>
 
+      {appMode==='lab'?(
+        <div style={{flex:1,overflow:'hidden',zIndex:10}}><GitSimulator/></div>
+      ):(
+      <>
       {showToken&&<div style={{padding:'8px 24px',background:T.surfaceAlt+'dd',borderBottom:`1px solid ${T.border}`,display:'flex',gap:8,alignItems:'center',flexShrink:0,zIndex:10}}>
         <span style={{color:T.textMuted,fontSize:12}}>Token:</span>
         <input value={token} onChange={e=>setToken(e.target.value)} placeholder="ghp_xxxx..." type="password" style={{flex:1,maxWidth:360,background:T.bg,border:`1px solid ${T.border}`,borderRadius:6,padding:'5px 10px',color:T.text,fontSize:12,outline:'none'}}/>
@@ -513,7 +477,6 @@ export default function App(){
               </div>
             </div>
           )}
-          {/* Controls */}
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',padding:'6px 12px',borderBottom:`1px solid ${T.border}`,background:T.surfaceAlt+'dd',gap:8,flexWrap:'wrap',flexShrink:0,backdropFilter:'blur(8px)'}}>
             <div style={{display:'flex',gap:4,flexWrap:'wrap',flex:1,overflow:'hidden'}}>
               <button onClick={()=>setBranchFilter('all')} style={{background:branchFilter==='all'?T.accent+'18':'transparent',border:`1px solid ${branchFilter==='all'?T.accent+'44':T.border}`,color:branchFilter==='all'?T.accent:T.textMuted,borderRadius:6,padding:'2px 8px',fontSize:11,cursor:'pointer',fontWeight:branchFilter==='all'?600:400}}>All</button>
@@ -529,7 +492,6 @@ export default function App(){
               </div>
             </div>
           </div>
-          {/* Compare bar */}
           {compareMode&&<div style={{padding:'6px 20px',background:T.cyan+'08',borderBottom:`1px solid ${T.cyan}22`,display:'flex',gap:12,alignItems:'center',fontSize:12,flexShrink:0,flexWrap:'wrap'}}>
             <span style={{color:T.cyan,fontWeight:600}}>Compare:</span>
             <span style={{color:T.textMuted}}>{!compareA?'Click commit A':!compareB?'Click commit B':'Showing diff'}</span>
@@ -537,7 +499,6 @@ export default function App(){
             {compareB&&<code style={{color:T.orange,fontSize:11}}>B: {shortSha(compareB)}</code>}
             {compareA&&<button onClick={()=>{setCompareA(null);setCompareB(null);}} style={{background:'none',border:`1px solid ${T.border}`,borderRadius:4,color:T.textMuted,fontSize:10,cursor:'pointer',padding:'1px 8px'}}>Reset</button>}
           </div>}
-          {/* Main view */}
           <div style={{flex:1,overflow:'hidden'}}>
             {view==='graph'?
               <CommitGraph commits={filtered} branchColors={branchColors} selectedSha={selectedCommit?.sha} onSelect={setSelectedCommit} compareMode={compareMode} compareA={compareA} compareB={compareB} onCompareSelect={onCompareSelect}/>:
@@ -546,7 +507,6 @@ export default function App(){
         </div>
       )}
 
-      {/* Empty state */}
       {!loading&&commits.length===0&&!error&&(
         <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:24,padding:40,zIndex:10}}>
           <div style={{position:'relative'}}>
@@ -566,9 +526,10 @@ export default function App(){
         </div>
       )}
 
-      {/* Panels */}
       {!compareMode&&<CommitPanel commit={selectedCommit} owner={parsed?.owner} repo={parsed?.repo} token={token} onClose={()=>setSelectedCommit(null)}/>}
       {compareMode&&compareA&&compareB&&<ComparePanel owner={parsed?.owner} repo={parsed?.repo} token={token} shaA={compareA} shaB={compareB} onClose={()=>{setCompareA(null);setCompareB(null);}}/>}
+      </>
+      )}
     </div>
   );
 }
